@@ -1,27 +1,20 @@
-
 export enum MessageAuthor {
   USER = 'user',
   BOT = 'bot',
 }
 
 export interface ChatMessage {
-  author: MessageAuthor;
-  text: string;
   id: string;
+  text: string;
+  author: MessageAuthor;
 }
 
-export enum GameType {
-  MEMORY = 'memory',
-  TIC_TAC_TOE = 'tic-tac-toe',
-  SUDOKU = 'sudoku',
+export interface Song {
+  title: string;
+  artist: string;
 }
 
-export interface GameState {
-  type: GameType | null;
-  isActive: boolean;
-}
-
-export interface MusicState {
-  query: string | null;
-  isActive: boolean;
+export interface RiddleState {
+  riddle: string;
+  answer: string;
 }

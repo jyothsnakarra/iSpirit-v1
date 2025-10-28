@@ -1,125 +1,101 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ChatMessage as ChatMessageType, MessageAuthor, GameType } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { ChatMessage as ChatMessageType, MessageAuthor } from '../types';
 import ChatMessage from './ChatMessage';
-import { sendMessageStream, startChat } from '../services/geminiService';
 import { SendIcon } from './icons/SendIcon';
+import { getChatResponse } from '../services/geminiService';
 import { playSound, SoundEffect } from '../services/soundService';
 
 interface ChatWindowProps {
-  onPlayGame: (gameType: GameType) => void;
-  onPlayMusic: (query: string) => void;
+  onOpenMusic: () => void;
+  onOpenGames: () => void;
+  personality: string;
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ onPlayGame, onPlayMusic }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ onOpenMusic, onOpenGames, personality }) => {
   const [messages, setMessages] = useState<ChatMessageType[]>([
-    { id: 'init', author: MessageAuthor.BOT, text: 'Hello, friend. I am iSpirit. How are you feeling today?' },
+    { id: '1', text: 'Hello! How are you feeling today? You can chat with me, or we can listen to some music or play a game.', author: MessageAuthor.BOT },
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    startChat();
-  }, []);
-  
-  useEffect(() => {
+  const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+  };
 
-  const handleSend = async (e: React.FormEvent) => {
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
-    playSound(SoundEffect.MessageSent);
-
     const userMessage: ChatMessageType = {
       id: Date.now().toString(),
-      author: MessageAuthor.USER,
       text: input,
+      author: MessageAuthor.USER,
     };
-    setMessages((prev) => [...prev, userMessage]);
+    
+    setMessages(prev => [...prev, userMessage]);
+    const currentInput = input;
     setInput('');
     setIsLoading(true);
+    playSound(SoundEffect.MessageSent);
 
-    const botMessageId = (Date.now() + 1).toString();
-    setMessages((prev) => [...prev, { id: botMessageId, author: MessageAuthor.BOT, text: '' }]);
+    // Call Gemini API
+    const botResponseText = await getChatResponse(currentInput, messages, personality);
 
-    try {
-      const stream = await sendMessageStream(input);
-      let accumulatedText = '';
-      let isFirstChunk = true;
+    const botMessage: ChatMessageType = {
+      id: (Date.now() + 1).toString(),
+      text: botResponseText,
+      author: MessageAuthor.BOT,
+    };
 
-      for await (const chunk of stream) {
-        if(chunk.functionCalls) {
-          for(const fc of chunk.functionCalls) {
-            if(fc.name === 'playGame' && fc.args.gameType) {
-              onPlayGame(fc.args.gameType as GameType);
-              accumulatedText += `\nI've opened the ${fc.args.gameType} game for you to relax your mind.`;
-            } else if (fc.name === 'playMusic' && fc.args.query) {
-              onPlayMusic(fc.args.query as string);
-              accumulatedText += `\nI found some music that might help: "${fc.args.query}"`;
-            }
-          }
-        }
-        
-        const chunkText = chunk.text;
-        if (chunkText) {
-          if (isFirstChunk) {
-            playSound(SoundEffect.MessageReceived);
-            isFirstChunk = false;
-          }
-          accumulatedText += chunkText;
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === botMessageId ? { ...msg, text: accumulatedText } : msg
-            )
-          );
-        }
-      }
-    } catch (error) {
-      console.error('Gemini API error:', error);
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === botMessageId ? { ...msg, text: 'Sorry, I encountered a problem. Please try again.' } : msg
-        )
-      );
-    } finally {
-      setIsLoading(false);
-    }
+    setMessages(prev => [...prev, botMessage]);
+    playSound(SoundEffect.MessageReceived);
+    setIsLoading(false);
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-grow space-y-6 overflow-y-auto pr-2">
-        {messages.map((msg) => (
+    <div className="flex-1 flex flex-col p-4 md:p-6 max-w-4xl w-full mx-auto">
+      <div className="flex-1 overflow-y-auto space-y-6 pr-2">
+        {messages.map(msg => (
           <ChatMessage key={msg.id} message={msg} />
         ))}
-        {isLoading && messages[messages.length-1].author === MessageAuthor.BOT && (
-           <div className="flex items-center space-x-2 animate-pulse ml-14">
-             <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-             <div className="w-2 h-2 bg-purple-400 rounded-full animation-delay-200"></div>
-             <div className="w-2 h-2 bg-purple-400 rounded-full animation-delay-400"></div>
-           </div>
+        {isLoading && (
+            <div className="flex items-start gap-4 animate-message-fade-in">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-gradient-to-br from-purple-500 to-indigo-600">
+                    <div className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                    <div className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                    <div className="w-2 h-2 bg-white rounded-full animate-bounce"></div>
+                </div>
+                <div className="max-w-md md:max-w-lg px-5 py-3 rounded-2xl bg-white/10 rounded-tl-none">
+                    <p className="whitespace-pre-wrap">Thinking...</p>
+                </div>
+            </div>
         )}
         <div ref={messagesEndRef} />
       </div>
-      <form onSubmit={handleSend} className="mt-6 flex items-center space-x-3 shrink-0">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Talk to iSpirit..."
-          className="w-full bg-white/5 border border-white/10 rounded-lg py-3 px-4 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
-          disabled={isLoading}
-        />
-        <button
-          type="submit"
-          disabled={isLoading || !input.trim()}
-          className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg p-3 transition-all duration-300 shadow-lg focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 focus:ring-offset-gray-900"
-        >
-          <SendIcon />
-        </button>
-      </form>
+      <div className="mt-6">
+        <div className="flex items-center space-x-2 mb-2">
+          <button onClick={onOpenMusic} className="px-4 py-2 text-sm bg-black/20 rounded-full hover:bg-black/40 transition-colors">Listen to Music 🎧</button>
+          <button onClick={onOpenGames} className="px-4 py-2 text-sm bg-black/20 rounded-full hover:bg-black/40 transition-colors">Play a Game 🎲</button>
+        </div>
+        <form onSubmit={handleSendMessage} className="flex items-center gap-2 p-2 bg-black/30 backdrop-blur-sm rounded-xl border border-white/10 focus-within:border-purple-500/50 transition-colors">
+          <input
+            type="text"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder="Type your message..."
+            className="flex-1 bg-transparent px-4 py-2 focus:outline-none"
+            disabled={isLoading}
+          />
+          <button type="submit" className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:cursor-not-allowed text-white rounded-lg p-3" disabled={isLoading || !input.trim()}>
+            <SendIcon />
+          </button>
+        </form>
+      </div>
     </div>
   );
 };

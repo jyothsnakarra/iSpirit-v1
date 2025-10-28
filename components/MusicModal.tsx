@@ -1,42 +1,79 @@
-
-import React from 'react';
+import React, { useState } from 'react';
+import { Song } from '../types';
+import { getMusicSuggestions } from '../services/geminiService';
 import { CloseIcon } from './icons/CloseIcon';
 
 interface MusicModalProps {
-  query: string;
   onClose: () => void;
 }
 
-const MusicModal: React.FC<MusicModalProps> = ({ query, onClose }) => {
-  const embedUrl = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query)}`;
+const genres = ['Chill Lo-fi', 'Upbeat Pop', 'Focus Ambient', 'Workout Electronic', 'Indie Acoustic', 'Classic Rock'];
+
+const MusicModal: React.FC<MusicModalProps> = ({ onClose }) => {
+  const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<Song[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleGenreSelect = async (genre: string) => {
+    setSelectedGenre(genre);
+    setIsLoading(true);
+    const result = await getMusicSuggestions(genre);
+    setSuggestions(result);
+    setIsLoading(false);
+  };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 border border-purple-500/50 rounded-2xl p-6 w-full max-w-2xl shadow-2xl relative text-center animate-fade-in">
-        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white z-10">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 animate-fade-in">
+      <div className="bg-gray-800/80 border border-purple-500/30 rounded-2xl shadow-xl w-full max-w-md p-6 m-4 relative">
+        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors">
           <CloseIcon />
         </button>
-        <h2 className="text-2xl font-bold text-purple-400 mb-4">A Moment for Music</h2>
-        <p className="text-gray-300 mb-6">Playing suggestions for: <span className="font-semibold">{query}</span></p>
-        <div className="aspect-video w-full">
-          <iframe
-            width="100%"
-            height="100%"
-            src={embedUrl}
-            title="YouTube video player"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            className="rounded-lg border-0"
-          ></iframe>
-        </div>
+
+        {!selectedGenre ? (
+          <>
+            <h2 className="text-2xl font-bold text-center mb-6">What's your mood?</h2>
+            <div className="grid grid-cols-2 gap-4">
+              {genres.map(genre => (
+                <button key={genre} onClick={() => handleGenreSelect(genre)} className="p-4 bg-purple-600/50 hover:bg-purple-600 rounded-lg transition-all text-center">
+                  {genre}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <h2 className="text-2xl font-bold text-center mb-6">Suggestions for <span className="text-purple-400">{selectedGenre}</span></h2>
+            {isLoading ? (
+              <div className="flex justify-center items-center h-40">
+                 <div className="w-4 h-4 bg-white rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                 <div className="w-4 h-4 bg-white rounded-full animate-bounce [animation-delay:-0.15s] mx-2"></div>
+                 <div className="w-4 h-4 bg-white rounded-full animate-bounce"></div>
+              </div>
+            ) : (
+              <ul className="space-y-3">
+                {suggestions.length > 0 ? suggestions.map((song, index) => (
+                  <li key={index} className="bg-black/20 p-3 rounded-lg flex justify-between items-center">
+                    <div>
+                      <p className="font-semibold">{song.title}</p>
+                      <p className="text-sm text-gray-400">{song.artist}</p>
+                    </div>
+                  </li>
+                )) : <p className="text-center text-gray-400">Couldn't find any suggestions. Try another genre!</p>}
+              </ul>
+            )}
+             <button onClick={() => setSelectedGenre(null)} className="mt-6 w-full px-4 py-2 text-sm bg-black/20 rounded-full hover:bg-black/40 transition-colors">Back to Genres</button>
+          </>
+        )}
       </div>
        <style>{`
-          .animate-fade-in { animation: fadeIn 0.3s ease-out; }
-          @keyframes fadeIn {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
-          }
-        `}</style>
+        .animate-fade-in {
+          animation: fadeIn 0.3s ease-out forwards;
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 };
